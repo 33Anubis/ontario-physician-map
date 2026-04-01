@@ -1,0 +1,342 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Empathia Physician Map</title>
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+    <style>
+      * {
+        margin: 0;
+        padding: 0;
+        box-sizing: border-box;
+      }
+      body {
+        font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        background: #f5f7fa;
+        color: #1a1a1a;
+        height: 100vh;
+        display: flex;
+        flex-direction: column;
+      }
+
+      header {
+        background: #1a1d2e;
+        padding: 12px 20px;
+        display: flex;
+        align-items: center;
+        gap: 16px;
+        border-bottom: 1px solid #2a2d3e;
+        flex-shrink: 0;
+      }
+      header h1 {
+        font-size: 16px;
+        font-weight: 600;
+        color: #fff;
+        letter-spacing: 0.3px;
+      }
+      header span {
+        font-size: 12px;
+        color: #666;
+      }
+
+      .controls {
+        background: #1a1d2e;
+        padding: 10px 20px;
+        display: flex;
+        gap: 12px;
+        align-items: center;
+        border-bottom: 1px solid #2a2d3e;
+        flex-shrink: 0;
+        flex-wrap: wrap;
+      }
+
+      select,
+      input {
+        background: #0f1117;
+        border: 1px solid #2a2d3e;
+        color: #e0e0e0;
+        padding: 6px 12px;
+        border-radius: 6px;
+        font-size: 13px;
+        outline: none;
+      }
+      select:focus,
+      input:focus {
+        border-color: #4f8ef7;
+      }
+      input {
+        width: 220px;
+      }
+
+      .stat {
+        font-size: 12px;
+        color: #666;
+        margin-left: auto;
+      }
+      .stat span {
+        color: #4f8ef7;
+        font-weight: 600;
+      }
+
+      #map {
+        flex: 1;
+      }
+
+      .leaflet-popup-content-wrapper {
+        background: #1a1d2e;
+        border: 1px solid #2a2d3e;
+        border-radius: 8px;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.4);
+        color: #e0e0e0;
+      }
+      .leaflet-popup-tip {
+        background: #1a1d2e;
+      }
+      .leaflet-popup-content {
+        margin: 14px 16px;
+        min-width: 220px;
+        max-width: 300px;
+      }
+
+      .popup-clinic {
+        font-size: 13px;
+        font-weight: 700;
+        color: #fff;
+        margin-bottom: 4px;
+      }
+      .popup-address {
+        font-size: 11px;
+        color: #888;
+        margin-bottom: 10px;
+        line-height: 1.4;
+      }
+      .popup-divider {
+        border: none;
+        border-top: 1px solid #2a2d3e;
+        margin: 8px 0;
+      }
+      .popup-doctor {
+        font-size: 12px;
+        padding: 4px 0;
+        border-bottom: 1px solid #1f2235;
+      }
+      .popup-doctor:last-child {
+        border-bottom: none;
+      }
+      .popup-doctor-name {
+        color: #e0e0e0;
+        font-weight: 500;
+      }
+      .popup-specialty {
+        font-size: 11px;
+        color: #4f8ef7;
+        margin-top: 2px;
+      }
+      .popup-count {
+        font-size: 11px;
+        color: #666;
+        margin-top: 6px;
+      }
+    </style>
+  </head>
+  <body>
+    <header>
+      <h1>🏥 Empathia Physician Map</h1>
+      <span id="loading">Loading data...</span>
+    </header>
+
+    <div class="controls">
+      <select id="specialtyFilter">
+        <option value="">All Specialties</option>
+      </select>
+      <select id="cityFilter">
+        <option value="">All Cities</option>
+      </select>
+      <input
+        type="text"
+        id="searchInput"
+        placeholder="Search doctor or clinic..."
+      />
+      <div class="stat">Showing <span id="visibleCount">0</span> clinics</div>
+    </div>
+
+    <div id="map"></div>
+
+    <script>
+      const map = L.map("map").setView([43.7, -79.4], 9);
+
+      L.tileLayer(
+        "https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png",
+        {
+          attribution: "&copy; OpenStreetMap &copy; CARTO",
+          maxZoom: 19,
+        },
+      ).addTo(map);
+
+      let allClinics = {};
+      let markers = [];
+
+      function buildClinics(data) {
+        data.forEach((row) => {
+          if (!row.lat || !row.lng) return;
+          const key = row.full_address;
+          if (!allClinics[key]) {
+            allClinics[key] = {
+              address: row.full_address,
+              city: (row.city || "").trim(),
+              lat: parseFloat(row.lat),
+              lng: parseFloat(row.lng),
+              doctors: [],
+            };
+          }
+          allClinics[key].doctors.push({
+            name: row.name,
+            specialties: row.specialties || "Pediatrics",
+          });
+        });
+      }
+
+      function getSpecialties() {
+        const set = new Set();
+        Object.values(allClinics).forEach((c) => {
+          c.doctors.forEach((d) => {
+            d.specialties.split("|").forEach((s) => set.add(s.trim()));
+          });
+        });
+        return [...set].sort();
+      }
+
+      function getCities() {
+        const set = new Set();
+        Object.values(allClinics).forEach((c) => {
+          if (c.city) set.add(c.city);
+        });
+        return [...set].sort();
+      }
+
+      function popupHTML(clinic) {
+        const shortAddress = clinic.address.replace(", Ontario, Canada", "");
+        let html = `<div class="popup-clinic">📍 ${shortAddress}</div>`;
+        html += `<div class="popup-address">${clinic.city}</div>`;
+        html += `<hr class="popup-divider">`;
+        clinic.doctors.forEach((d) => {
+          html += `<div class="popup-doctor">
+      <div class="popup-doctor-name">${d.name}</div>
+      <div class="popup-specialty">${d.specialties}</div>
+    </div>`;
+        });
+        if (clinic.doctors.length > 1) {
+          html += `<div class="popup-count">${clinic.doctors.length} physicians at this location</div>`;
+        }
+        return html;
+      }
+
+      function renderMarkers(specialty = "", city = "", search = "") {
+        markers.forEach((m) => map.removeLayer(m));
+        markers = [];
+
+        const filtered = Object.values(allClinics).filter((clinic) => {
+          if (city && clinic.city.toLowerCase() !== city.toLowerCase())
+            return false;
+          if (search) {
+            const q = search.toLowerCase();
+            const matchDoctor = clinic.doctors.some((d) =>
+              d.name.toLowerCase().includes(q),
+            );
+            const matchAddress = clinic.address.toLowerCase().includes(q);
+            if (!matchDoctor && !matchAddress) return false;
+          }
+          if (specialty) {
+            const hasSpec = clinic.doctors.some((d) =>
+              d.specialties.includes(specialty),
+            );
+            if (!hasSpec) return false;
+          }
+          return true;
+        });
+
+        filtered.forEach((clinic) => {
+          const marker = L.circleMarker([clinic.lat, clinic.lng], {
+            radius: Math.min(6 + clinic.doctors.length, 12),
+            fillColor: "#4f8ef7",
+            color: "#2a5fc4",
+            weight: 1.5,
+            opacity: 1,
+            fillOpacity: 0.8,
+          });
+          marker.bindPopup(popupHTML(clinic), { maxHeight: 300 });
+          marker.addTo(map);
+          markers.push(marker);
+        });
+
+        document.getElementById("visibleCount").textContent = filtered.length;
+      }
+
+      function populateFilters() {
+        const specSelect = document.getElementById("specialtyFilter");
+        getSpecialties().forEach((s) => {
+          const opt = document.createElement("option");
+          opt.value = s;
+          opt.textContent = s;
+          specSelect.appendChild(opt);
+        });
+
+        const citySelect = document.getElementById("cityFilter");
+        getCities().forEach((c) => {
+          const opt = document.createElement("option");
+          opt.value = c;
+          opt.textContent = c;
+          citySelect.appendChild(opt);
+        });
+      }
+
+      function getFilters() {
+        return {
+          specialty: document.getElementById("specialtyFilter").value,
+          city: document.getElementById("cityFilter").value,
+          search: document.getElementById("searchInput").value,
+        };
+      }
+
+      document
+        .getElementById("specialtyFilter")
+        .addEventListener("change", () => {
+          const f = getFilters();
+          renderMarkers(f.specialty, f.city, f.search);
+        });
+      document.getElementById("cityFilter").addEventListener("change", () => {
+        const f = getFilters();
+        renderMarkers(f.specialty, f.city, f.search);
+      });
+      document.getElementById("searchInput").addEventListener("input", () => {
+        const f = getFilters();
+        renderMarkers(f.specialty, f.city, f.search);
+      });
+
+      // Load CSV — update this path to your geocoded CSV
+      Papa.parse("./pediatricians_geocoded.csv", {
+        download: true,
+        header: true,
+        skipEmptyLines: true,
+        complete: function (results) {
+          buildClinics(results.data);
+          populateFilters();
+          renderMarkers();
+          document.getElementById("loading").textContent =
+            `${Object.keys(allClinics).length} clinics · ${results.data.filter((r) => r.lat).length} physicians mapped`;
+        },
+        error: function (err) {
+          document.getElementById("loading").textContent =
+            "Error loading CSV — open via a local server";
+          console.error(err);
+        },
+      });
+    </script>
+  </body>
+</html>
