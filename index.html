@@ -185,7 +185,10 @@
       function buildClinics(data) {
         data.forEach((row) => {
           if (!row.lat || !row.lng) return;
-          const key = row.full_address;
+          const key = (row.postal || "")
+            .trim()
+            .replace(/\s+/g, "")
+            .toUpperCase();
           if (!allClinics[key]) {
             allClinics[key] = {
               address: row.full_address,
@@ -197,7 +200,7 @@
           }
           allClinics[key].doctors.push({
             name: row.name,
-            specialties: row.specialties || "Pediatrics",
+            specialties: row.specialties || "",
           });
         });
       }
