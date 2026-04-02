@@ -319,24 +319,53 @@
         renderMarkers(f.specialty, f.city, f.search);
       });
 
-      // Load CSV — update this path to your geocoded CSV
-      Papa.parse("./pediatricians_geocoded.csv", {
-        download: true,
-        header: true,
-        skipEmptyLines: true,
-        complete: function (results) {
-          buildClinics(results.data);
-          populateFilters();
-          renderMarkers();
-          document.getElementById("loading").textContent =
-            `${Object.keys(allClinics).length} clinics · ${results.data.filter((r) => r.lat).length} physicians mapped`;
-        },
-        error: function (err) {
-          document.getElementById("loading").textContent =
-            "Error loading CSV — open via a local server";
-          console.error(err);
-        },
+      const CSV_FILES = [
+        "./pediatricians_geocoded.csv",
+        "./Family_geocoded.csv",
+        "./Ortho_geocoded.csv",
+        "./Cardio_geocoded.csv",
+      ];
+
+      let loaded = 0;
+
+      CSV_FILES.forEach((file) => {
+        Papa.parse(file, {
+          download: true,
+          header: true,
+          skipEmptyLines: true,
+          complete: function (results) {
+            buildClinics(results.data);
+            loaded++;
+            if (loaded === CSV_FILES.length) {
+              populateFilters();
+              renderMarkers();
+              document.getElementById("loading").textContent =
+                `${Object.keys(allClinics).length} clinics · ${Object.values(allClinics).reduce((sum, c) => sum + c.doctors.length, 0)} physicians mapped`;
+            }
+          },
+          error: function (err) {
+            console.error(`Error loading ${file}:`, err);
+          },
+        });
       });
+      // // Load CSV — update this path to your geocoded CSV
+      // Papa.parse("./pediatricians_geocoded.csv", {
+      //   download: true,
+      //   header: true,
+      //   skipEmptyLines: true,
+      //   complete: function (results) {
+      //     buildClinics(results.data);
+      //     populateFilters();
+      //     renderMarkers();
+      //     document.getElementById("loading").textContent =
+      //       `${Object.keys(allClinics).length} clinics · ${results.data.filter((r) => r.lat).length} physicians mapped`;
+      //   },
+      //   error: function (err) {
+      //     document.getElementById("loading").textContent =
+      //       "Error loading CSV — open via a local server";
+      //     console.error(err);
+      //   },
+      // });
     </script>
   </body>
 </html>
